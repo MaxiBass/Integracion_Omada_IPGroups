@@ -1,0 +1,113 @@
+create_group:
+  name: Crear grupo IP
+  description: Crea un nuevo grupo de IPs en el controlador Omada.
+  fields:
+    name:
+      name: Nombre
+      description: Nombre del grupo.
+      required: true
+      example: "Dispositivos confiables"
+      selector:
+        text:
+    ips:
+      name: IPs
+      description: Lista de IPs a incluir. Cada elemento admite ip, mask (opcional, 32 por defecto) y description (opcional).
+      required: true
+      example: '[{"ip": "192.168.1.50", "description": "Cámara entrada"}]'
+      selector:
+        object:
+    description:
+      name: Descripción
+      description: Descripción opcional del grupo.
+      required: false
+      selector:
+        text:
+
+update_group:
+  name: Actualizar grupo IP
+  description: Reemplaza el nombre y la lista completa de IPs de un grupo existente.
+  fields:
+    group_id:
+      name: ID del grupo
+      description: Identificador del grupo (atributo group_id del sensor).
+      required: true
+      selector:
+        text:
+    name:
+      name: Nombre
+      description: Nuevo nombre del grupo.
+      required: true
+      selector:
+        text:
+    ips:
+      name: IPs
+      description: Lista completa de IPs que tendrá el grupo tras la actualización.
+      required: true
+      selector:
+        object:
+    description:
+      name: Descripción
+      description: Descripción opcional del grupo.
+      required: false
+      selector:
+        text:
+
+delete_group:
+  name: Borrar grupo IP
+  description: Elimina un grupo IP del controlador Omada.
+  fields:
+    group_id:
+      name: ID del grupo
+      description: Identificador del grupo a borrar.
+      required: true
+      selector:
+        text:
+
+add_ip:
+  name: Añadir IP a grupo
+  description: Añade una IP a un grupo IP existente sin afectar al resto de entradas.
+  fields:
+    group_id:
+      name: ID del grupo
+      description: Identificador del grupo.
+      required: true
+      selector:
+        text:
+    ip:
+      name: IP
+      description: Dirección IP a añadir.
+      required: true
+      example: "192.168.1.50"
+      selector:
+        text:
+    mask:
+      name: Máscara
+      description: Máscara de red (por defecto 32, host único).
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 32
+    description:
+      name: Descripción
+      description: Descripción de esta entrada IP.
+      required: false
+      selector:
+        text:
+
+remove_ip:
+  name: Quitar IP de grupo
+  description: Elimina una IP de un grupo IP existente.
+  fields:
+    group_id:
+      name: ID del grupo
+      description: Identificador del grupo.
+      required: true
+      selector:
+        text:
+    ip:
+      name: IP
+      description: Dirección IP a eliminar.
+      required: true
+      selector:
+        text:
