@@ -2,25 +2,25 @@
   "config": {
     "step": {
       "user": {
-        "title": "Conectar con el controlador Omada",
-        "description": "Introduce los datos de acceso locales de tu controlador Omada (no se usa la nube de TP-Link).",
+        "title": "Connect to the Omada controller",
+        "description": "Enter the local login details of your Omada controller (the TP-Link cloud is not used).",
         "data": {
           "host": "Host / IP",
-          "port": "Puerto",
-          "username": "Usuario",
-          "password": "Contraseña",
-          "site_name": "Nombre del site",
-          "verify_ssl": "Verificar certificado SSL"
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "site_name": "Site name",
+          "verify_ssl": "Verify SSL certificate"
         }
       }
     },
     "error": {
-      "invalid_auth": "Usuario o contraseña incorrectos.",
-      "cannot_connect": "No se pudo conectar con el controlador. Comprueba host/puerto.",
-      "unknown": "Error inesperado."
+      "invalid_auth": "Wrong username or password.",
+      "cannot_connect": "Could not connect to the controller. Check the host and port.",
+      "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "Este controlador/site ya está configurado."
+      "already_configured": "This controller/site is already configured."
     }
   }
 }

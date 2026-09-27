@@ -1,10 +1,14 @@
 {
   "domain": "omada_ipgroups",
   "name": "Omada IP Groups",
-  "codeowners": [],
-  "config_flow": true,
-  "documentation": "https://github.com/",
+  "version": "0.2.0",
+  "documentation": "https://github.com/MaxiBass/Integracion_Omada_IPGroups",
+  "issue_tracker": "https://github.com/MaxiBass/Integracion_Omada_IPGroups/issues",
+  "requirements": [],
+  "codeowners": [
+    "@MaxiBass"
+  ],
   "iot_class": "local_polling",
-  "requirements": ["aiohttp"],
-  "version": "0.1.0"
+  "config_flow": true,
+  "integration_type": "hub"
 }

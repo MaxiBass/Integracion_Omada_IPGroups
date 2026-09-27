@@ -8,10 +8,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 import homeassistant.helpers.config_validation as cv
 
-from .api import OmadaApiError, OmadaAuthError, OmadaConnectionError, OmadaLocalClient
+from .api import OmadaApiError, OmadaAuthError, OmadaLocalClient
 from .coordinator import OmadaIPGroupsCoordinator
 from .const import (
     ATTR_DESCRIPTION,
@@ -29,6 +30,7 @@ from .const import (
     SERVICE_REMOVE_IP,
     SERVICE_UPDATE_GROUP,
 )
+from .entity import hub_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +57,8 @@ SERVICE_UPDATE_GROUP_SCHEMA = vol.Schema(
         vol.Required(ATTR_GROUP_ID): cv.string,
         vol.Required(ATTR_NAME): cv.string,
         vol.Required(ATTR_IPS): vol.All(cv.ensure_list, [IP_ENTRY_SCHEMA]),
-        vol.Optional(ATTR_DESCRIPTION, default=""): cv.string,
+        # Sin valor por defecto: si no se indica, se conserva la del grupo.
+        vol.Optional(ATTR_DESCRIPTION): cv.string,
     }
 )
 
@@ -94,16 +97,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await client.async_setup()
     except OmadaAuthError as err:
-        raise HomeAssistantError(f"Autenticación fallida contra el controlador Omada: {err}") from err
-    except OmadaConnectionError as err:
         await client.async_close()
-        raise HomeAssistantError(f"No se pudo conectar al controlador Omada: {err}") from err
+        raise ConfigEntryError(f"Autenticación fallida contra el controlador Omada: {err}") from err
+    except OmadaApiError as err:
+        # Controlador apagado, reiniciándose o aún arrancando (p. ej. si tras
+        # un corte de luz HA arranca antes que él): HA reintenta solo.
+        await client.async_close()
+        raise ConfigEntryNotReady(f"No se pudo conectar al controlador Omada: {err}") from err
 
-    coordinator = OmadaIPGroupsCoordinator(hass, client)
-    await coordinator.async_config_entry_first_refresh()
+    if client.site_name and client.site_name != data[CONF_SITE_NAME]:
+        # El site configurado no existe y el cliente ha usado el primero. Se
+        # fija el real: así no se avisa en cada arranque y, si algún día se
+        # crea otro site, la integración no cambia de site sin avisar.
+        _LOGGER.info("Se guarda el site '%s' en lugar de '%s'", client.site_name, data[CONF_SITE_NAME])
+        hass.config_entries.async_update_entry(
+            entry, data={**data, CONF_SITE_NAME: client.site_name}
+        )
+
+    coordinator = OmadaIPGroupsCoordinator(hass, entry, client)
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        await client.async_close()
+        raise
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # El dispositivo del controlador va antes que las entidades: los de cada
+    # grupo lo referencian por su id de registro (ver entity.py).
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, **hub_device_info(entry)
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -130,6 +155,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, service)
 
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device: dr.DeviceEntry
+) -> bool:
+    """Deja eliminar desde HA el dispositivo de un grupo que ya no existe.
+
+    Al borrar un grupo, su dispositivo y sus entidades se quedan como no
+    disponibles; sin esto no había forma de quitarlos.
+    """
+    coordinator: OmadaIPGroupsCoordinator | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if coordinator is None:
+        return False
+    alive = {(DOMAIN, entry.entry_id)} | {
+        (DOMAIN, f"{entry.entry_id}_{group_id}") for group_id in coordinator.data or {}
+    }
+    return not device.identifiers & alive
 
 
 def _get_first_coordinator(hass: HomeAssistant) -> OmadaIPGroupsCoordinator:
@@ -167,7 +209,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 group_id=call.data[ATTR_GROUP_ID],
                 name=call.data[ATTR_NAME],
                 ip_list=call.data[ATTR_IPS],
-                description=call.data.get(ATTR_DESCRIPTION, ""),
+                description=call.data.get(ATTR_DESCRIPTION),
             )
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error actualizando grupo IP: {err}") from err

@@ -5,6 +5,7 @@ from datetime import timedelta
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -17,10 +18,13 @@ _LOGGER = logging.getLogger(__name__)
 class OmadaIPGroupsCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
     """Mantiene en caché los grupos IP, indexados por id de grupo."""
 
-    def __init__(self, hass: HomeAssistant, client: OmadaLocalClient) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, client: OmadaLocalClient
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=DOMAIN,
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )

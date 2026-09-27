@@ -4,12 +4,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import aiohttp
 import voluptuous as vol
 
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
-from homeassistant.data_entry_flow import FlowResult
 
 from .api import OmadaAuthError, OmadaConnectionError, OmadaLocalClient
 from .const import (
@@ -35,24 +34,25 @@ STEP_USER_SCHEMA = vol.Schema(
 )
 
 
-async def _validate_input(data: dict[str, Any]) -> None:
-    """Prueba login + resolución de site contra el controlador real."""
-    connector = aiohttp.TCPConnector(ssl=data[CONF_VERIFY_SSL])
-    # Mismo motivo que en api.py: el host es una IP, así que forzamos el
-    # cookie jar en modo unsafe para que aiohttp no descarte la cookie de
-    # sesión del controlador.
-    cookie_jar = aiohttp.CookieJar(unsafe=True)
-    async with aiohttp.ClientSession(connector=connector, cookie_jar=cookie_jar) as session:
-        client = OmadaLocalClient(
-            host=data[CONF_HOST],
-            port=data[CONF_PORT],
-            username=data[CONF_USERNAME],
-            password=data[CONF_PASSWORD],
-            site_name=data[CONF_SITE_NAME],
-            verify_ssl=data[CONF_VERIFY_SSL],
-            session=session,
-        )
+async def _validate_input(data: dict[str, Any]) -> str:
+    """Prueba login + resolución de site contra el controlador real.
+
+    Devuelve el nombre del site que se usará: si el indicado no existe, el
+    cliente cae en el primero, y es ese el que hay que guardar.
+    """
+    client = OmadaLocalClient(
+        host=data[CONF_HOST],
+        port=data[CONF_PORT],
+        username=data[CONF_USERNAME],
+        password=data[CONF_PASSWORD],
+        site_name=data[CONF_SITE_NAME],
+        verify_ssl=data[CONF_VERIFY_SSL],
+    )
+    try:
         await client.async_setup()
+    finally:
+        await client.async_close()
+    return client.site_name or data[CONF_SITE_NAME]
 
 
 class OmadaIPGroupsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -60,12 +60,14 @@ class OmadaIPGroupsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
 
         if user_input is not None:
             try:
-                await _validate_input(user_input)
+                site_name = await _validate_input(user_input)
             except OmadaAuthError:
                 errors["base"] = "invalid_auth"
             except OmadaConnectionError:
@@ -74,6 +76,17 @@ class OmadaIPGroupsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Error inesperado validando la configuración")
                 errors["base"] = "unknown"
             else:
+                user_input = {**user_input, CONF_SITE_NAME: site_name}
+                # Las entradas antiguas tienen el unique_id con el site que se
+                # escribió (p. ej. "Default"), no con el real; se comparan
+                # también por datos para no darlas de alta dos veces.
+                self._async_abort_entries_match(
+                    {
+                        CONF_HOST: user_input[CONF_HOST],
+                        CONF_PORT: user_input[CONF_PORT],
+                        CONF_SITE_NAME: site_name,
+                    }
+                )
                 await self.async_set_unique_id(
                     f"{user_input[CONF_HOST]}:{user_input[CONF_PORT]}:{user_input[CONF_SITE_NAME]}"
                 )

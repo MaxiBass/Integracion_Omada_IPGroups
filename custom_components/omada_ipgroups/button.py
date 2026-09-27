@@ -76,7 +76,7 @@ class OmadaAddIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity
     def device_info(self):
         group = (self.coordinator.data or {}).get(self._group_id)
         name = group["name"] if group else self._group_id
-        return group_device_info(self._entry, self._group_id, name)
+        return group_device_info(self.hass, self._entry, self._group_id, name)
 
     async def async_press(self) -> None:
         ip_unique = f"{self._entry.entry_id}_{self._group_id}_new_ip"
@@ -118,7 +118,7 @@ class OmadaRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEnt
     def device_info(self):
         group = (self.coordinator.data or {}).get(self._group_id)
         name = group["name"] if group else self._group_id
-        return group_device_info(self._entry, self._group_id, name)
+        return group_device_info(self.hass, self._entry, self._group_id, name)
 
     async def async_press(self) -> None:
         select_unique = f"{self._entry.entry_id}_{self._group_id}_remove_ip_select"
@@ -151,7 +151,7 @@ class OmadaDeleteGroupButton(CoordinatorEntity[OmadaIPGroupsCoordinator], Button
     def device_info(self):
         group = (self.coordinator.data or {}).get(self._group_id)
         name = group["name"] if group else self._group_id
-        return group_device_info(self._entry, self._group_id, name)
+        return group_device_info(self.hass, self._entry, self._group_id, name)
 
     async def async_press(self) -> None:
         try:

@@ -42,6 +42,9 @@ class OmadaIPGroupSensor(CoordinatorEntity[OmadaIPGroupsCoordinator], SensorEnti
     """Representa un grupo IP: el estado es el nº de IPs, atributos = detalle."""
 
     _attr_has_entity_name = True
+    # Sin nombre propio: es la entidad principal del dispositivo del grupo y
+    # toma su nombre. Si repitiera el del grupo, HA mostraría "X X".
+    _attr_name = None
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:ip-network"
 
@@ -65,12 +68,7 @@ class OmadaIPGroupSensor(CoordinatorEntity[OmadaIPGroupsCoordinator], SensorEnti
     def device_info(self):
         group = self._group
         name = group["name"] if group else self._group_id
-        return group_device_info(self._entry, self._group_id, name)
-
-    @property
-    def name(self) -> str:
-        group = self._group
-        return group["name"] if group else "Grupo IP eliminado"
+        return group_device_info(self.hass, self._entry, self._group_id, name)
 
     @property
     def native_value(self) -> int | None:

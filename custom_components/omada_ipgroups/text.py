@@ -79,7 +79,7 @@ class _OmadaGroupTextBase(CoordinatorEntity[OmadaIPGroupsCoordinator], TextEntit
     def device_info(self):
         group = self._group
         name = group["name"] if group else self._group_id
-        return group_device_info(self._entry, self._group_id, name)
+        return group_device_info(self.hass, self._entry, self._group_id, name)
 
     async def async_set_value(self, value: str) -> None:
         self._attr_native_value = value

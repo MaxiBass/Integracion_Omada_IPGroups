@@ -47,7 +47,7 @@ update_group:
         object:
     description:
       name: Descripción
-      description: Descripción opcional del grupo.
+      description: Nueva descripción del grupo. Si no se indica, se conserva la actual.
       required: false
       selector:
         text:

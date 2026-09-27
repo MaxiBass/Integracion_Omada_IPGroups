@@ -72,7 +72,7 @@ class OmadaGroupRemoveIpSelect(CoordinatorEntity[OmadaIPGroupsCoordinator], Sele
     def device_info(self):
         group = self._group
         name = group["name"] if group else self._group_id
-        return group_device_info(self._entry, self._group_id, name)
+        return group_device_info(self.hass, self._entry, self._group_id, name)
 
     @property
     def options(self) -> list[str]:
