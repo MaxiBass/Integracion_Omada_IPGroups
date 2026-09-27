@@ -180,12 +180,12 @@ existentes se mantienen.
 
 ## 6. Pendiente y decisiones abiertas
 
-- **`IPGroup_Any`.** El controlador tiene un grupo con ese nombre y una sola
-  entrada, `0.0.0.0/0` (parece el que crea Omada para «cualquier IP»). La
-  integración le crea, como a cualquier grupo, los botones de añadir, quitar
-  y **borrar**. No se ha probado si Omada deja borrarlo; si lo usa alguna
-  regla, borrarlo o tocarlo sería un problema. Pendiente de decidir con Maxi
-  si se excluye (desaparecerían sus entidades) o se deja.
+- **`IPGroup_Any` se queda como está (decisión de Maxi, 27/09/2026).** El
+  controlador tiene un grupo con ese nombre y una sola entrada, `0.0.0.0/0`
+  (parece el que crea Omada para «cualquier IP»). La integración le crea, como
+  a cualquier grupo, los botones de añadir, quitar y **borrar**. Se planteó
+  excluirlo y Maxi prefirió mantenerlo. No se ha probado si Omada deja
+  borrarlo: si lo usa alguna regla, cuidado con ese botón.
 - `remove_ip` quita todas las entradas con esa IP, sea cual sea la máscara.
 - Los servicios actúan siempre sobre la primera entrada configurada; con un
   solo controlador no importa.
