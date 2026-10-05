@@ -107,7 +107,8 @@ y la entrada se quedaba en error hasta recargarla a mano. Ahora:
 - controlador inalcanzable → `ConfigEntryNotReady`: HA reintenta solo;
 - usuario o contraseña mal → `ConfigEntryError`: error claro y sin
   reintentos (reintentar con una contraseña mala solo acumula intentos de
-  login fallidos en el controlador).
+  login fallidos en el controlador). Desde v0.3.1 es `ConfigEntryAuthFailed`,
+  que tampoco reintenta pero además pide los datos nuevos (§8).
 
 En los dos casos, y si falla el primer sondeo, se cierra la sesión HTTP; antes
 se quedaba abierta.
@@ -239,7 +240,53 @@ Decisiones:
 - Si una IP está en el grupo dos veces con distinta máscara, se quitan las
   dos y solo se devuelve la primera (así funcionaba ya `remove_ip`).
 
-## 8. Nota sobre las pruebas
+## 8. Icono, diagnóstico y reconfigurar (v0.3.1, octubre de 2026)
+
+Ideas sacadas de revisar
+[bullitt186/ha-omada-open-api](https://github.com/bullitt186/ha-omada-open-api),
+otra integración de Omada (de monitorización, sin grupos IP).
+
+- **Icono propio** en `custom_components/omada_ipgroups/brand/`
+  (`icon.png` 256×256 e `icon@2x.png` 512×512). Desde HA 2026.9 el
+  componente `brands` sirve las imágenes de una integración custom desde esa
+  carpeta; antes no había icono. Es un diseño propio (un grupo con tres
+  equipos conectados), no el logo de TP-Link: el repo es público. Se dibuja
+  con `docs/icono/generar.py` (Pillow, que ya trae HA). En la raíz del repo no
+  sirve: Cointra y Bomba de calor tienen ahí su `icon.png` y HA no lo ve.
+- **Diagnóstico descargable** (`diagnostics.py`): la entrada (sin usuario ni
+  contraseña), el site en uso, el estado del último sondeo, los grupos tal
+  como los devuelve el controlador y las IPs quitadas temporalmente.
+- **Reconfigurar** (`async_step_reconfigure`): cambia IP, puerto, usuario,
+  contraseña (vacía = la actual) o site sin borrar la entrada. Se valida
+  contra el controlador antes de guardar y la entrada se recarga sola. Si
+  cambia el controlador o el site, se actualizan el `unique_id` y el título;
+  se rechaza si ya hay otra entrada con esos datos. El formulario no tiene
+  valores por defecto: lo que no se mande se conserva (con valores por
+  defecto, un campo vacío volvía al site «Default»; lo cazó la prueba).
+- **Volver a pedir la contraseña** (`async_step_reauth`): si al arrancar el
+  controlador rechaza el usuario o la contraseña, HA lo avisa y los pide. El
+  27/09 la entrada se borró y se dio de alta otra vez; con esto ya no
+  hace falta.
+- Durante el funcionamiento normal, un login rechazado sigue contando como
+  fallo del sondeo y se reintenta (no se pide la contraseña): un rechazo
+  puntual del controlador no debe dejar la integración parada.
+
+Lo que se descartó de aquella integración:
+
+- **Pasar a la Open API oficial** (OAuth con client ID y secret). Está
+  documentada, no guarda la contraseña de administrador y el controlador de
+  casa (6.3.0.45) la soporta; tiene lectura de grupos
+  (`GET /openapi/v1/{omadacId}/sites/{siteId}/profiles/groups`), pero no se
+  pudo confirmar que permita modificarlos. Es un cambio grande y la API web
+  funciona con la 6.3: se queda como plan B si una actualización la rompe.
+  Si pasa, lo primero que probar es la cabecera
+  `Omada-Request-Source: web-local`, que esa integración manda en el login
+  web.
+- **Bloquear clientes** (`clients/{mac}/block`): los saca de toda la red, no
+  solo de Internet. Para dispositivos que deben seguir en la red local, lo
+  correcto es grupo IP + regla ACL.
+
+## 9. Nota sobre las pruebas
 
 Con HA 2026.9 y el Python 3.14.7 del venv, el intérprete da un segfault
 al cerrarse si hay una entrada de configuración cargada (pasa igual en

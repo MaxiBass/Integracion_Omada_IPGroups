@@ -1,7 +1,7 @@
 {
   "domain": "omada_ipgroups",
   "name": "Omada IP Groups",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "documentation": "https://github.com/MaxiBass/Integracion_Omada_IPGroups",
   "issue_tracker": "https://github.com/MaxiBass/Integracion_Omada_IPGroups/issues",
   "requirements": [],

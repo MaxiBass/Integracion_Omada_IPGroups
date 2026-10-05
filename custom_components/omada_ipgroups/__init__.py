@@ -9,7 +9,7 @@ from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.storage import Store
@@ -133,7 +133,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_setup()
     except OmadaAuthError as err:
         await client.async_close()
-        raise ConfigEntryError(f"Autenticación fallida contra el controlador Omada: {err}") from err
+        # Sin reintentos (acumularían logins fallidos en el controlador); HA
+        # avisa y pide el usuario y la contraseña nuevos (config_flow, reauth).
+        raise ConfigEntryAuthFailed(f"Autenticación fallida contra el controlador Omada: {err}") from err
     except OmadaApiError as err:
         # Controlador apagado, reiniciándose o aún arrancando (p. ej. si tras
         # un corte de luz HA arranca antes que él): HA reintenta solo.

@@ -12,6 +12,26 @@
           "site_name": "Nombre del site",
           "verify_ssl": "Verificar certificado SSL"
         }
+      },
+      "reconfigure": {
+        "title": "Cambiar la conexión con el controlador",
+        "description": "Cambia la IP, el puerto, el usuario o el site sin borrar la integración: se conservan los dispositivos y las entidades. Deja la contraseña vacía para mantener la actual.",
+        "data": {
+          "host": "Host / IP",
+          "port": "Puerto",
+          "username": "Usuario",
+          "password": "Contraseña (vacía = la actual)",
+          "site_name": "Nombre del site",
+          "verify_ssl": "Verificar certificado SSL"
+        }
+      },
+      "reauth_confirm": {
+        "title": "El controlador ha rechazado el acceso",
+        "description": "El controlador Omada ({host}) no acepta el usuario o la contraseña guardados. Introduce los actuales.",
+        "data": {
+          "username": "Usuario",
+          "password": "Contraseña"
+        }
       }
     },
     "error": {
@@ -20,7 +40,9 @@
       "unknown": "Error inesperado."
     },
     "abort": {
-      "already_configured": "Este controlador/site ya está configurado."
+      "already_configured": "Este controlador/site ya está configurado.",
+      "reconfigure_successful": "Conexión actualizada. La integración se ha recargado.",
+      "reauth_successful": "Acceso actualizado. La integración se ha recargado."
     }
   }
 }

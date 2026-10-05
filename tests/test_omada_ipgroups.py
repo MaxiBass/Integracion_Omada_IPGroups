@@ -71,6 +71,15 @@ def test_manifest_y_traducciones() -> None:
     comprobar(es == cadenas, "strings.json coincide con es.json")
     comprobar(es != en, "en.json no es una copia de es.json")
 
+    from PIL import Image
+
+    tamanos = {}
+    for nombre in ("icon.png", "icon@2x.png"):
+        ruta = BASE / "brand" / nombre
+        tamanos[nombre] = Image.open(ruta).size if ruta.exists() else None
+    comprobar(tamanos == {"icon.png": (256, 256), "icon@2x.png": (512, 512)},
+              f"icono propio en brand/ con los tamaños de HA {tamanos}")
+
 
 # ── Controlador Omada falso ──────────────────────────────────────────
 
@@ -241,7 +250,7 @@ def _sesion_cerrada(cliente) -> bool:
 
 async def _recorrido(directorio: Path) -> None:
     from homeassistant.config_entries import ConfigEntryState
-    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
 
     registros = _Registros()
     logging.getLogger().addHandler(registros)
@@ -478,6 +487,59 @@ async def _recorrido(directorio: Path) -> None:
         await coord.async_refresh()
         await hass.async_block_till_done()
 
+        # ── Icono y diagnóstico ──
+        print("\n  · icono y diagnóstico")
+        from homeassistant import loader
+
+        integ = await loader.async_get_integration(hass, DOMINIO)
+        comprobar(integ.has_branding, "HA ve el icono propio (carpeta brand/)")
+
+        from custom_components.omada_ipgroups import diagnostics
+
+        await coord.temporales.async_remove("g1", "10.0.0.40", 30)
+        diag = await diagnostics.async_get_config_entry_diagnostics(hass, entrada)
+        texto = json.dumps(diag, default=str)
+        comprobar(diag["entry"]["data"]["password"] == "**REDACTED**"
+                  and diag["entry"]["data"]["username"] == "**REDACTED**"
+                  and '"clave"' not in texto and '"usuario"' not in texto,
+                  "el diagnóstico tapa el usuario y la contraseña")
+        comprobar({g["groupId"] for g in diag["groups"]} >= {"g1", "g2"}
+                  and diag["controller"]["site_name"] == "Casa"
+                  and diag["temporarily_removed"]["g1"][0]["ip"] == "10.0.0.40",
+                  "y trae los grupos, el site y las IPs quitadas temporalmente")
+        await coord.temporales.async_restore("g1")
+
+        # ── Reconfigurar sin borrar la entrada ──
+        print("\n  · reconfigurar")
+        ids_antes = {e.entity_id for e in er.async_entries_for_config_entry(er.async_get(hass), eid)}
+        flujo = await hass.config_entries.flow.async_init(
+            DOMINIO, context={"source": "reconfigure", "entry_id": eid}
+        )
+        sugeridos = {
+            str(k): (k.description or {}).get("suggested_value") for k in flujo["data_schema"].schema
+        }
+        comprobar(flujo.get("step_id") == "reconfigure" and sugeridos.get("host") == "10.0.0.1"
+                  and sugeridos.get("password") is None,
+                  f"el formulario sale relleno con los datos actuales, sin la contraseña {sugeridos}")
+        controlador.clave_mala = True
+        mal = await hass.config_entries.flow.async_configure(
+            flujo["flow_id"], {"host": "10.0.0.5", "port": 443, "username": "usuario", "password": "otra"}
+        )
+        comprobar(mal.get("errors") == {"base": "invalid_auth"}, "con una contraseña mala, avisa y no cambia nada")
+        controlador.clave_mala = False
+        bien = await hass.config_entries.flow.async_configure(
+            flujo["flow_id"], {"host": "10.0.0.5", "port": 443, "username": "usuario"}
+        )
+        await hass.async_block_till_done()
+        coord = hass.data[DOMINIO][eid]
+        ids_despues = {e.entity_id for e in er.async_entries_for_config_entry(er.async_get(hass), eid)}
+        comprobar(bien.get("reason") == "reconfigure_successful" and entrada.data["host"] == "10.0.0.5"
+                  and entrada.data["password"] == "clave" and entrada.unique_id == "10.0.0.5:443:Casa"
+                  and entrada.title == "Omada IP Groups (10.0.0.5)",
+                  "cambia la IP; con la contraseña vacía conserva la que había")
+        comprobar(entrada.state is ConfigEntryState.LOADED and ids_antes == ids_despues,
+                  "se recarga sola y conserva todas las entidades")
+
         # ── Recarga: nada duplicado, sin repetir el aviso del site ──
         print("\n  · recarga")
         antes = {d.id for d in dr.async_entries_for_config_entry(registro, entrada.entry_id)}
@@ -529,7 +591,19 @@ async def _recorrido(directorio: Path) -> None:
         comprobar(entrada.state is ConfigEntryState.SETUP_ERROR,
                   f"contraseña mala → error, sin reintentos inútiles ({entrada.state})")
         comprobar(_sesion_cerrada(controlador.clientes[-1]), "y tampoco deja la sesión abierta")
+        reauth = [f for f in hass.config_entries.flow.async_progress_by_handler(DOMINIO)
+                  if f["context"]["source"] == "reauth"]
+        comprobar(len(reauth) == 1 and reauth[0]["step_id"] == "reauth_confirm",
+                  "HA pide el usuario y la contraseña nuevos")
         controlador.clave_mala = False
+        if reauth:
+            fin = await hass.config_entries.flow.async_configure(
+                reauth[0]["flow_id"], {"username": "usuario", "password": "nueva"}
+            )
+            await hass.async_block_till_done()
+            comprobar(fin.get("reason") == "reauth_successful" and entrada.data["password"] == "nueva"
+                      and entrada.state is ConfigEntryState.LOADED,
+                      "al darlos, se guardan y la integración vuelve a cargar")
 
         # ── Alta nueva por el formulario ──
         print("\n  · alta por el formulario")
@@ -550,9 +624,7 @@ async def _recorrido(directorio: Path) -> None:
         from homeassistant.components import persistent_notification
 
         nueva = resultado["result"]
-        await hass.services.async_call(
-            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.40", "minutes": 30}, blocking=True
-        )
+        await hass.data[DOMINIO][nueva.entry_id].temporales.async_remove("g1", "10.0.0.40", 30)
         fichero_nueva = directorio / ".storage" / f"omada_ipgroups.{nueva.entry_id}.temporales"
         comprobar(fichero_nueva.exists(), "la entrada nueva tiene su propio registro")
         await hass.config_entries.async_remove(nueva.entry_id)

@@ -1,7 +1,8 @@
 """Cliente para la Web API local (no-cloud) del controlador Omada.
 
 Basado en peticiones capturadas directamente contra un OC220 (firmware 5.x)
-mediante las DevTools del navegador. Usa el mismo flujo que el panel web:
+mediante las DevTools del navegador; sigue funcionando con la 6.3. Usa el
+mismo flujo que el panel web:
 
     GET  /api/info                                     -> (opcional, "calentamiento" de sesión)
     POST /api/v2/login                                  -> token + omadacId + cookie de sesión

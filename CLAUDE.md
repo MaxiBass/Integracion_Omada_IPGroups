@@ -31,8 +31,12 @@ custom_components/omada_ipgroups/
   temporal.py     IPs quitadas temporalmente: registro en disco y vuelta sola
   entity.py       DeviceInfo del controlador y de cada grupo
   sensor.py, text.py, select.py, number.py, button.py
-  config_flow.py, services.yaml, strings.json, translations/
+  config_flow.py  alta, reconfigurar y volver a pedir la contraseña
+  diagnostics.py  diagnóstico descargable, sin credenciales
+  services.yaml, strings.json, translations/
+  brand/          icono propio (HA 2026.9 lo lee de aquí)
 docs/DECISIONES.md  por qué es así; NO va en custom_components
+docs/icono/generar.py  dibuja brand/icon.png e icon@2x.png
 tests/test_omada_ipgroups.py
 ```
 

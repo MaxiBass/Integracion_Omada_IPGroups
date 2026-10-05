@@ -69,6 +69,10 @@ class TemporaryRemovals:
     def records(self, group_id: str) -> list[dict[str, Any]]:
         return list(self._data.get(group_id, {}).values())
 
+    def all_records(self) -> dict[str, list[dict[str, Any]]]:
+        """Todas, también las de grupos que ya no existen."""
+        return {group_id: list(records.values()) for group_id, records in self._data.items()}
+
     # ------------------------------------------------------------------
 
     async def async_remove(self, group_id: str, ip: str, minutes: int | None) -> None:

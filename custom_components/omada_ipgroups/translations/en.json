@@ -12,6 +12,26 @@
           "site_name": "Site name",
           "verify_ssl": "Verify SSL certificate"
         }
+      },
+      "reconfigure": {
+        "title": "Change the connection to the controller",
+        "description": "Change the IP, port, username or site without removing the integration: devices and entities are kept. Leave the password empty to keep the current one.",
+        "data": {
+          "host": "Host / IP",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password (empty = current one)",
+          "site_name": "Site name",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      },
+      "reauth_confirm": {
+        "title": "The controller rejected the login",
+        "description": "The Omada controller ({host}) no longer accepts the saved username or password. Enter the current ones.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -20,7 +40,9 @@
       "unknown": "Unexpected error."
     },
     "abort": {
-      "already_configured": "This controller/site is already configured."
+      "already_configured": "This controller/site is already configured.",
+      "reconfigure_successful": "Connection updated. The integration has been reloaded.",
+      "reauth_successful": "Login updated. The integration has been reloaded."
     }
   }
 }

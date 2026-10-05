@@ -34,6 +34,15 @@ Historial de decisiones y de la revisión: [`docs/DECISIONES.md`](docs/DECISIONE
 
 Solo gestiona grupos de tipo IP; los de MAC, puertos o países se ignoran.
 
+Además, en la ficha de la integración (Ajustes → Dispositivos y servicios):
+
+- **Reconfigurar**: cambia la IP, el puerto, el usuario, la contraseña o el
+  site sin borrar la integración ni perder sus entidades.
+- Si el controlador deja de aceptar la contraseña, HA avisa y la pide de
+  nuevo, sin tener que borrar nada.
+- **Descargar diagnóstico**: los grupos tal como los devuelve el controlador,
+  sin el usuario ni la contraseña.
+
 ## Instalación vía HACS
 
 1. HACS → menú ⋮ → **Repositorios personalizados**.
