@@ -62,6 +62,10 @@ class OmadaConnectionError(OmadaApiError):
     """Error de red/conexión con el controlador."""
 
 
+class OmadaGroupNotFoundError(OmadaApiError):
+    """El grupo pedido no existe (o ya no) en el controlador."""
+
+
 class OmadaLocalClient:
     """Cliente async para gestionar Grupos IP en un controlador Omada local."""
 
@@ -280,7 +284,7 @@ class OmadaLocalClient:
         for group in groups:
             if group.get("groupId") == group_id:
                 return group
-        raise OmadaApiError(f"Grupo IP con id '{group_id}' no encontrado")
+        raise OmadaGroupNotFoundError(f"Grupo IP con id '{group_id}' no encontrado")
 
     async def async_create_ip_group(
         self,

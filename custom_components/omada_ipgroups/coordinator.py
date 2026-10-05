@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -11,6 +11,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import OmadaApiError, OmadaLocalClient
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+
+if TYPE_CHECKING:
+    from .temporal import TemporaryRemovals
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,6 +32,8 @@ class OmadaIPGroupsCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]])
             update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
         )
         self.client = client
+        # Lo crea async_setup_entry tras el primer sondeo (ver temporal.py).
+        self.temporales: TemporaryRemovals | None = None
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:

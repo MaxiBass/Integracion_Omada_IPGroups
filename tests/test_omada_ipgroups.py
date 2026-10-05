@@ -21,6 +21,7 @@ import logging
 import shutil
 import sys
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -216,6 +217,24 @@ def _entidad(hass, plataforma: str, unique_id: str) -> str:
     return entity_id
 
 
+async def _pulsar(hass, unique_id: str) -> None:
+    await hass.services.async_call(
+        "button", "press", {"entity_id": _entidad(hass, "button", unique_id)}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+
+async def _falla(coro) -> bool:
+    """True si la llamada da un HomeAssistantError (error claro para el usuario)."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    try:
+        await coro
+    except HomeAssistantError:
+        return True
+    return False
+
+
 def _sesion_cerrada(cliente) -> bool:
     return cliente._session is None or cliente._session.closed
 
@@ -332,6 +351,133 @@ async def _recorrido(directorio: Path) -> None:
         )
         comprobar(g1["description"] == "Otra", "update_group con descripción la cambia")
 
+        # ── Quitar una IP temporalmente (p. ej. dar Internet un rato) ──
+        print("\n  · quitar una IP temporalmente")
+        from homeassistant.util import dt as dt_util
+
+        from custom_components.omada_ipgroups import temporal
+
+        eid = entrada.entry_id
+        coord = hass.data[DOMINIO][eid]
+        en_g1 = lambda: [e["ip"] for e in controlador.grupos["g1"]["ipList"]]  # noqa: E731
+        fuera = lambda: hass.states.get(_entidad(hass, "sensor", f"{eid}_g1_temp_removed"))  # noqa: E731
+        fichero = directorio / ".storage" / f"omada_ipgroups.{eid}.temporales"
+
+        minutos = _entidad(hass, "number", f"{eid}_g1_temp_minutes")
+        comprobar(float(hass.states.get(minutos).state) == 60, "«Minutos fuera del grupo» empieza en 60")
+        await hass.services.async_call(
+            DOMINIO, "add_ip", {"group_id": "g1", "ip": "10.0.0.40", "description": "Cámara"}, blocking=True
+        )
+        await coord.async_refresh()
+        await hass.services.async_call(
+            "select", "select_option", {"entity_id": seleccion, "option": "10.0.0.40 (Cámara)"}, blocking=True
+        )
+        await hass.services.async_call("number", "set_value", {"entity_id": minutos, "value": 30}, blocking=True)
+        antes = dt_util.utcnow()
+        await _pulsar(hass, f"{eid}_g1_temp_remove_button")
+        comprobar("10.0.0.40" not in en_g1() and "10.0.0.22" in en_g1(),
+                  f"«Quitar temporalmente» saca solo la IP seleccionada ({en_g1()})")
+        estado = fuera()
+        apunte = (estado.attributes.get("ips") or [{}])[0]
+        vuelve = dt_util.parse_datetime(apunte.get("restore_at") or "2000-01-01T00:00:00+00:00")
+        comprobar(estado.state == "1" and apunte.get("description") == "Cámara",
+                  f"«Quitadas temporalmente» la muestra con su descripción ({estado.state}, {apunte})")
+        comprobar(abs((vuelve - antes).total_seconds() - 30 * 60) < 60
+                  and estado.attributes.get("next_restore") == apunte.get("restore_at"),
+                  "y vuelve sola dentro de 30 minutos")
+        comprobar(fichero.exists() and "10.0.0.40" in fichero.read_text("utf-8"), "queda guardada en disco")
+
+        await _pulsar(hass, f"{eid}_g1_restore_button")
+        devuelta = next((e for e in controlador.grupos["g1"]["ipList"] if e["ip"] == "10.0.0.40"), {})
+        comprobar(devuelta.get("description") == "Cámara" and devuelta.get("mask") == 32,
+                  f"«Volver a añadir» la devuelve tal como estaba ({devuelta})")
+        comprobar(fuera().state == "0" and "10.0.0.40" not in fichero.read_text("utf-8"),
+                  "y se borra el apunte")
+        comprobar(await _falla(hass.services.async_call(
+            "button", "press", {"entity_id": _entidad(hass, "button", f"{eid}_g1_restore_button")}, blocking=True
+        )), "«Volver a añadir» sin nada quitado da un error claro")
+
+        # Sin límite de tiempo, y HA reiniciado entretanto: sigue fuera.
+        await hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.40"}, blocking=True
+        )
+        comprobar(fuera().attributes["ips"][0]["restore_at"] is None, "por servicio sin minutos: no vuelve sola")
+        await hass.config_entries.async_reload(eid)
+        await hass.async_block_till_done()
+        coord = hass.data[DOMINIO][eid]
+        comprobar(fuera().state == "1" and "10.0.0.40" not in en_g1(),
+                  "tras reiniciar, sigue fuera y apuntada")
+        await hass.services.async_call(
+            DOMINIO, "restore_ips", {"group_id": "g1", "ip": "10.0.0.40"}, blocking=True
+        )
+        comprobar("10.0.0.40" in en_g1() and fuera().state == "0", "restore_ips con una IP la devuelve")
+        comprobar(await _falla(hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.99"}, blocking=True
+        )), "quitar una IP que no está en el grupo da un error claro")
+
+        # El tiempo se cumplió con HA apagado: al arrancar, vuelve.
+        await hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.40", "minutes": 30}, blocking=True
+        )
+        apuntes = coord.temporales._data["g1"]["10.0.0.40"]
+        apuntes["restore_at"] = (dt_util.utcnow() - timedelta(minutes=1)).isoformat()
+        await coord.temporales._async_save()
+        await hass.config_entries.async_reload(eid)
+        await hass.async_block_till_done()
+        coord = hass.data[DOMINIO][eid]
+        # El temporizador vencido se dispara en la siguiente vuelta del bucle,
+        # justo después de cargar la entrada.
+        await asyncio.sleep(0.2)
+        await hass.async_block_till_done()
+        comprobar("10.0.0.40" in en_g1() and fuera().state == "0",
+                  "si el plazo venció con HA apagado, vuelve al arrancar")
+
+        # Con HA en marcha: vuelve sola al cumplirse el plazo.
+        await hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.40", "minutes": 30}, blocking=True
+        )
+        coord.temporales._data["g1"]["10.0.0.40"]["restore_at"] = (
+            dt_util.utcnow() + timedelta(seconds=1)
+        ).isoformat()
+        coord.temporales._schedule("g1", "10.0.0.40")
+        await asyncio.sleep(0.3)
+        comprobar("10.0.0.40" not in en_g1(), "antes del plazo sigue fuera")
+        await asyncio.sleep(1.2)
+        await hass.async_block_till_done()
+        comprobar("10.0.0.40" in en_g1() and fuera().state == "0", "al cumplirse el plazo vuelve sola")
+
+        # Controlador caído justo al cumplirse: reintenta hasta que entra.
+        temporal.RETRY_DELAY = 0.5
+        await hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.40", "minutes": 30}, blocking=True
+        )
+        coord.temporales._data["g1"]["10.0.0.40"]["restore_at"] = dt_util.utcnow().isoformat()
+        controlador.caido = True
+        coord.temporales._schedule("g1", "10.0.0.40")
+        await asyncio.sleep(0.3)
+        await hass.async_block_till_done()
+        comprobar(bool(registros.con("10.0.0.40", "se reintenta"))
+                  and "10.0.0.40" in str(coord.temporales.records("g1")),
+                  "controlador caído al cumplirse: avisa y no pierde el apunte")
+        controlador.caido = False
+        await asyncio.sleep(0.8)
+        await hass.async_block_till_done()
+        comprobar("10.0.0.40" in en_g1() and not coord.temporales.records("g1"),
+                  "cuando vuelve el controlador, la IP entra")
+        temporal.RETRY_DELAY = 60
+
+        # Grupo borrado mientras la IP estaba fuera: se olvida sin error.
+        gid = nuevo["groupId"]
+        await hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": gid, "ip": "10.0.0.30"}, blocking=True
+        )
+        controlador.grupos.pop(gid)
+        await coord.temporales.async_restore(gid)
+        comprobar(not coord.temporales.records(gid) and bool(registros.con("ya no existe", "10.0.0.30")),
+                  "si el grupo ya no existe, se olvida el apunte con un aviso")
+        await coord.async_refresh()
+        await hass.async_block_till_done()
+
         # ── Recarga: nada duplicado, sin repetir el aviso del site ──
         print("\n  · recarga")
         antes = {d.id for d in dr.async_entries_for_config_entry(registro, entrada.entry_id)}
@@ -398,6 +544,24 @@ async def _recorrido(directorio: Path) -> None:
         comprobar(resultado.get("result") is not None and resultado["result"].data["site_name"] == "Casa",
                   "el formulario guarda el site que de verdad se usa")
         comprobar(_sesion_cerrada(controlador.clientes[-2]), "la sesión de prueba del formulario se cierra")
+
+        # ── Borrar la integración con una IP fuera ──
+        print("\n  · borrar la integración con una IP fuera")
+        from homeassistant.components import persistent_notification
+
+        nueva = resultado["result"]
+        await hass.services.async_call(
+            DOMINIO, "remove_ip_temporarily", {"group_id": "g1", "ip": "10.0.0.40", "minutes": 30}, blocking=True
+        )
+        fichero_nueva = directorio / ".storage" / f"omada_ipgroups.{nueva.entry_id}.temporales"
+        comprobar(fichero_nueva.exists(), "la entrada nueva tiene su propio registro")
+        await hass.config_entries.async_remove(nueva.entry_id)
+        await hass.async_block_till_done()
+        avisos = persistent_notification._async_get_or_create_notifications(hass)
+        aviso = avisos.get(f"omada_ipgroups_{nueva.entry_id}_temporales", {})
+        comprobar("10.0.0.40" in aviso.get("message", "") and "Cámara" in aviso.get("message", ""),
+                  "avisa con una notificación de las IPs que se quedan fuera")
+        comprobar(not fichero_nueva.exists(), "y borra su registro")
     finally:
         await hass.async_stop(force=True)
         logging.getLogger().removeHandler(registros)

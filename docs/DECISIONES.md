@@ -52,7 +52,8 @@ las viejas huérfanas:
 - Sensor de un grupo: `{entry_id}_{groupId}`
 - Por grupo: `{entry_id}_{groupId}_new_ip`, `_new_ip_desc`,
   `_remove_ip_select`, `_add_ip_button`, `_remove_ip_button`,
-  `_delete_group_button`
+  `_delete_group_button`; desde v0.3.0 también `_temp_remove_button`,
+  `_restore_button`, `_temp_minutes` y `_temp_removed`
 - Del controlador: `{entry_id}_new_group_name`, `{entry_id}_create_group_button`
 - Dispositivos: `(omada_ipgroups, {entry_id})` el controlador y
   `(omada_ipgroups, {entry_id}_{groupId})` cada grupo.
@@ -193,8 +194,53 @@ existentes se mantienen.
   (el `Debouncer` del coordinator). Si se pulsan dos botones seguidos, el
   segundo cambio tarda hasta 10 s en verse.
 
-## 7. Nota sobre las pruebas
+## 7. Quitar una IP temporalmente (v0.3.0, octubre de 2026)
 
-Con HA 2026.9.2 y el Python 3.14.7 del venv, el intérprete da un segfault
+Lo pidió Maxi para el grupo que corta Internet en casa: poder darle Internet
+un rato a un dispositivo, sobre todo para actualizar su firmware, y luego
+volver a bloquearlo.
+
+Cómo funciona (código en `temporal.py`):
+
+- **«Quitar temporalmente»** saca del grupo la IP elegida en el desplegable
+  «IP a quitar» (el mismo que usa «Quitar IP seleccionada») y guarda su
+  máscara y su descripción.
+- **«Volver a añadir»** devuelve al grupo todas las IPs quitadas
+  temporalmente de él, tal como estaban.
+- **«Minutos fuera del grupo»**: pasado ese tiempo la IP vuelve sola. Es una
+  red de seguridad que no estaba en la petición original: si a uno se le
+  olvida pulsar «Volver a añadir», el dispositivo no se queda con Internet
+  para siempre. Por defecto 60 minutos; 0 = no vuelve sola. El valor se
+  recuerda tras reiniciar.
+- **«Quitadas temporalmente»**: cuántas IPs están fuera, y en los atributos
+  cuáles y cuándo vuelve cada una (`restore_at`, `next_restore`).
+- Servicios `remove_ip_temporarily` (sin `minutes`, o 0, no vuelve sola) y
+  `restore_ips` (una IP o todas las del grupo), para scripts.
+
+Decisiones:
+
+- **Se guarda en disco** (`.storage/omada_ipgroups.<entry_id>.temporales`).
+  Un reinicio de HA no hace perder qué hay que devolver, y si el plazo
+  venció con HA apagado, la IP vuelve nada más arrancar.
+- **Se apunta antes de quitarla.** Si HA se cayera justo después de la
+  petición al controlador, la IP seguiría constando como pendiente. Si la
+  petición falla, se borra el apunte.
+- **Si el controlador no responde al cumplirse el plazo, se reintenta cada
+  minuto** hasta que entra; el apunte no se pierde.
+- Si alguien vuelve a añadir la IP a mano entretanto, al devolverla no se
+  duplica (`add_ip` ya lo evitaba); solo se borra el apunte. El sensor la
+  sigue contando como fuera hasta entonces.
+- Si se borra el grupo mientras la IP está fuera, al intentar devolverla se
+  olvida el apunte con un aviso en el registro.
+- **Si se borra la integración con IPs fuera, sale una notificación** con
+  cuáles son: una entrada nueva no hereda el registro, así que habría que
+  volver a añadirlas a mano. (El 27/09 se borró y se volvió a dar de alta
+  la entrada; de haber habido una IP fuera, se habría perdido sin aviso.)
+- Si una IP está en el grupo dos veces con distinta máscara, se quitan las
+  dos y solo se devuelve la primera (así funcionaba ya `remove_ip`).
+
+## 8. Nota sobre las pruebas
+
+Con HA 2026.9 y el Python 3.14.7 del venv, el intérprete da un segfault
 al cerrarse si hay una entrada de configuración cargada (pasa igual en
 `Integracion_Matriculas`). Por eso la prueba termina con `os._exit`.

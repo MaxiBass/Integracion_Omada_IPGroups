@@ -7,7 +7,9 @@ Habla con la API web local del controlador; no usa la nube de TP-Link.
 
 Sirve, por ejemplo, para cortar Internet a un dispositivo desde HA: si una
 regla ACL de Omada bloquea un grupo IP, meter o sacar la IP del grupo es
-activar o desactivar el bloqueo.
+activar o desactivar el bloqueo. Y para lo contrario, darle Internet un rato
+(p. ej. para actualizar su firmware): se le saca del grupo temporalmente y
+vuelve solo al cabo de los minutos que se elijan.
 
 Historial de decisiones y de la revisión: [`docs/DECISIONES.md`](docs/DECISIONES.md).
 
@@ -19,11 +21,16 @@ Historial de decisiones y de la revisión: [`docs/DECISIONES.md`](docs/DECISIONE
   - campos de texto «IP a añadir» y «Descripción de la IP a añadir», y el
     botón «Añadir IP»,
   - un desplegable «IP a quitar» y el botón «Quitar IP seleccionada»,
+  - para quitarla solo un rato: el botón «Quitar temporalmente», el campo
+    «Minutos fuera del grupo» (60 por defecto; 0 = no vuelve sola), el botón
+    «Volver a añadir» y el sensor «Quitadas temporalmente», con cuándo
+    vuelve cada IP,
   - el botón «Borrar este grupo».
 - En el dispositivo del controlador: el campo «Nombre del nuevo grupo» y el
   botón «Crear grupo».
 - Servicios `omada_ipgroups.create_group`, `update_group`, `delete_group`,
-  `add_ip` y `remove_ip`, para automatizaciones.
+  `add_ip`, `remove_ip`, `remove_ip_temporarily` y `restore_ips`, para
+  automatizaciones.
 
 Solo gestiona grupos de tipo IP; los de MAC, puertos o países se ignoran.
 
@@ -46,7 +53,7 @@ Copia `custom_components/omada_ipgroups` a
 
 ```bash
 python3 -m venv /tmp/hav
-/tmp/hav/bin/pip install homeassistant==2026.9.2
+/tmp/hav/bin/pip install homeassistant==2026.9.4
 /tmp/hav/bin/python tests/test_omada_ipgroups.py
 ```
 

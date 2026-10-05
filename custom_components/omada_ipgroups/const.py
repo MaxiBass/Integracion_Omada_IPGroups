@@ -19,9 +19,17 @@ ATTR_IPS = "ips"
 ATTR_IP = "ip"
 ATTR_MASK = "mask"
 ATTR_DESCRIPTION = "description"
+ATTR_MINUTES = "minutes"
+
+# Quitar una IP temporalmente: minutos por defecto hasta que vuelve sola al
+# grupo (0 = no vuelve sola) y máximo que admite el campo.
+DEFAULT_TEMP_MINUTES = 60
+MAX_TEMP_MINUTES = 1440
 
 SERVICE_CREATE_GROUP = "create_group"
 SERVICE_DELETE_GROUP = "delete_group"
 SERVICE_ADD_IP = "add_ip"
 SERVICE_REMOVE_IP = "remove_ip"
 SERVICE_UPDATE_GROUP = "update_group"
+SERVICE_REMOVE_IP_TEMPORARILY = "remove_ip_temporarily"
+SERVICE_RESTORE_IPS = "restore_ips"

@@ -1,4 +1,5 @@
-"""Sensores: uno por grupo IP, con la lista de IPs como atributo."""
+"""Sensores por grupo IP: el del grupo (nº de IPs, con la lista como
+atributo) y el de las IPs quitadas temporalmente (ver temporal.py)."""
 from __future__ import annotations
 
 from typing import Any
@@ -28,9 +29,11 @@ async def async_setup_entry(
         new_ids = current_ids - known_group_ids
         if new_ids:
             known_group_ids.update(new_ids)
-            async_add_entities(
-                OmadaIPGroupSensor(coordinator, entry, group_id) for group_id in new_ids
-            )
+            entities: list[SensorEntity] = []
+            for group_id in new_ids:
+                entities.append(OmadaIPGroupSensor(coordinator, entry, group_id))
+                entities.append(OmadaTempRemovedSensor(coordinator, entry, group_id))
+            async_add_entities(entities)
         # Los grupos borrados desaparecen solos: available=False vía CoordinatorEntity
         # más la condición en `available` de abajo.
 
@@ -93,4 +96,47 @@ class OmadaIPGroupSensor(CoordinatorEntity[OmadaIPGroupsCoordinator], SensorEnti
                 }
                 for entry in (group.get("ipList") or [])
             ],
+        }
+
+
+class OmadaTempRemovedSensor(CoordinatorEntity[OmadaIPGroupsCoordinator], SensorEntity):
+    """Nº de IPs quitadas temporalmente del grupo, con cuándo vuelve cada una."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:timer-sand"
+    _attr_name = "Quitadas temporalmente"
+
+    def __init__(
+        self, coordinator: OmadaIPGroupsCoordinator, entry: ConfigEntry, group_id: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._group_id = group_id
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{group_id}_temp_removed"
+
+    @property
+    def device_info(self):
+        group = (self.coordinator.data or {}).get(self._group_id)
+        name = group["name"] if group else self._group_id
+        return group_device_info(self.hass, self._entry, self._group_id, name)
+
+    @property
+    def _records(self) -> list[dict[str, Any]]:
+        return self.coordinator.temporales.records(self._group_id)
+
+    @property
+    def native_value(self) -> int:
+        return len(self._records)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        records = self._records
+        # restore_at None = no vuelve sola, hasta pulsar «Volver a añadir».
+        pending = sorted(r["restore_at"] for r in records if r["restore_at"])
+        return {
+            "ips": [
+                {k: r[k] for k in ("ip", "mask", "description", "removed_at", "restore_at")}
+                for r in records
+            ],
+            "next_restore": pending[0] if pending else None,
         }

@@ -28,8 +28,9 @@ custom_components/omada_ipgroups/
   api.py          cliente de la API web local del controlador (sin HA)
   coordinator.py  sondeo de los grupos cada 120 s
   __init__.py     alta de la entrada, dispositivo del controlador, servicios
+  temporal.py     IPs quitadas temporalmente: registro en disco y vuelta sola
   entity.py       DeviceInfo del controlador y de cada grupo
-  sensor.py, text.py, select.py, button.py
+  sensor.py, text.py, select.py, number.py, button.py
   config_flow.py, services.yaml, strings.json, translations/
 docs/DECISIONES.md  por qué es así; NO va en custom_components
 tests/test_omada_ipgroups.py
@@ -60,7 +61,7 @@ sin editar antes en el repo.
 
 ```bash
 python3 -m venv /tmp/hav
-/tmp/hav/bin/pip install homeassistant==2026.9.2
+/tmp/hav/bin/pip install homeassistant==2026.9.4
 /tmp/hav/bin/python tests/test_omada_ipgroups.py
 ```
 

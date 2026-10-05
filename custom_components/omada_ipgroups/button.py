@@ -1,5 +1,6 @@
 """Entidades `button`: disparan las acciones leyendo el estado de los campos
-`text`/`select` de la propia integración (sin depender de helpers externos)."""
+`text`/`select`/`number` de la propia integración (sin depender de helpers
+externos)."""
 from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
@@ -11,7 +12,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import OmadaApiError
-from .const import DOMAIN
+from .const import DEFAULT_TEMP_MINUTES, DOMAIN
 from .coordinator import OmadaIPGroupsCoordinator
 from .entity import group_device_info, hub_device_info
 from .select import parse_ip_from_option
@@ -35,6 +36,8 @@ async def async_setup_entry(
             for group_id in new_ids:
                 entities.append(OmadaAddIpButton(coordinator, entry, group_id))
                 entities.append(OmadaRemoveIpButton(coordinator, entry, group_id))
+                entities.append(OmadaTempRemoveIpButton(coordinator, entry, group_id))
+                entities.append(OmadaRestoreIpsButton(coordinator, entry, group_id))
                 entities.append(OmadaDeleteGroupButton(coordinator, entry, group_id))
             async_add_entities(entities)
 
@@ -132,6 +135,70 @@ class OmadaRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEnt
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error quitando la IP: {err}") from err
         await self.coordinator.async_request_refresh()
+
+
+class OmadaTempRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity):
+    """Quita la IP del desplegable «IP a quitar» y la guarda para devolverla."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:timer-minus-outline"
+    _attr_name = "Quitar temporalmente"
+
+    def __init__(
+        self, coordinator: OmadaIPGroupsCoordinator, entry: ConfigEntry, group_id: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._group_id = group_id
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{group_id}_temp_remove_button"
+
+    @property
+    def device_info(self):
+        group = (self.coordinator.data or {}).get(self._group_id)
+        name = group["name"] if group else self._group_id
+        return group_device_info(self.hass, self._entry, self._group_id, name)
+
+    async def async_press(self) -> None:
+        select_unique = f"{self._entry.entry_id}_{self._group_id}_remove_ip_select"
+        option = _read_state(self.hass, "select", select_unique)
+        if not option or option in ("unknown", "unavailable"):
+            raise HomeAssistantError("No hay ninguna IP seleccionada en este grupo")
+
+        minutes_unique = f"{self._entry.entry_id}_{self._group_id}_temp_minutes"
+        try:
+            minutes = int(float(_read_state(self.hass, "number", minutes_unique)))
+        except (TypeError, ValueError):
+            minutes = DEFAULT_TEMP_MINUTES
+
+        await self.coordinator.temporales.async_remove(
+            self._group_id, parse_ip_from_option(option), minutes or None
+        )
+        await self.coordinator.async_request_refresh()
+
+
+class OmadaRestoreIpsButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity):
+    """Devuelve al grupo todas las IPs quitadas temporalmente de él."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:restore"
+    _attr_name = "Volver a añadir"
+
+    def __init__(
+        self, coordinator: OmadaIPGroupsCoordinator, entry: ConfigEntry, group_id: str
+    ) -> None:
+        super().__init__(coordinator)
+        self._group_id = group_id
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_{group_id}_restore_button"
+
+    @property
+    def device_info(self):
+        group = (self.coordinator.data or {}).get(self._group_id)
+        name = group["name"] if group else self._group_id
+        return group_device_info(self.hass, self._entry, self._group_id, name)
+
+    async def async_press(self) -> None:
+        await self.coordinator.temporales.async_restore(self._group_id)
 
 
 class OmadaDeleteGroupButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity):

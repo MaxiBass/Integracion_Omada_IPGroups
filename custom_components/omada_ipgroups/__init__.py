@@ -5,12 +5,14 @@ import logging
 
 import voluptuous as vol
 
+from homeassistant.components import persistent_notification
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.storage import Store
 
 from .api import OmadaApiError, OmadaAuthError, OmadaLocalClient
 from .coordinator import OmadaIPGroupsCoordinator
@@ -20,21 +22,36 @@ from .const import (
     ATTR_IP,
     ATTR_IPS,
     ATTR_MASK,
+    ATTR_MINUTES,
     ATTR_NAME,
     CONF_SITE_NAME,
     CONF_VERIFY_SSL,
     DOMAIN,
+    MAX_TEMP_MINUTES,
     SERVICE_ADD_IP,
     SERVICE_CREATE_GROUP,
     SERVICE_DELETE_GROUP,
     SERVICE_REMOVE_IP,
+    SERVICE_REMOVE_IP_TEMPORARILY,
+    SERVICE_RESTORE_IPS,
     SERVICE_UPDATE_GROUP,
 )
 from .entity import hub_device_info
+from .temporal import STORAGE_VERSION, TemporaryRemovals, storage_key
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["sensor", "text", "select", "button"]
+PLATFORMS = ["sensor", "text", "select", "number", "button"]
+
+SERVICES = (
+    SERVICE_CREATE_GROUP,
+    SERVICE_UPDATE_GROUP,
+    SERVICE_DELETE_GROUP,
+    SERVICE_ADD_IP,
+    SERVICE_REMOVE_IP,
+    SERVICE_REMOVE_IP_TEMPORARILY,
+    SERVICE_RESTORE_IPS,
+)
 
 IP_ENTRY_SCHEMA = vol.Schema(
     {
@@ -80,6 +97,24 @@ SERVICE_REMOVE_IP_SCHEMA = vol.Schema(
     }
 )
 
+SERVICE_REMOVE_IP_TEMPORARILY_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_GROUP_ID): cv.string,
+        vol.Required(ATTR_IP): cv.string,
+        # Sin minutos (o 0), la IP no vuelve sola: hay que llamar a restore_ips.
+        vol.Optional(ATTR_MINUTES, default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=MAX_TEMP_MINUTES)
+        ),
+    }
+)
+
+SERVICE_RESTORE_IPS_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_GROUP_ID): cv.string,
+        vol.Optional(ATTR_IP): cv.string,
+    }
+)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Configura una entrada de Omada IP Groups."""
@@ -121,6 +156,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.async_close()
         raise
 
+    # IPs quitadas temporalmente: se cargan de disco y, si alguna debía haber
+    # vuelto mientras HA estaba apagado, vuelve ahora.
+    coordinator.temporales = TemporaryRemovals(hass, entry, coordinator)
+    await coordinator.temporales.async_load()
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
@@ -142,19 +182,39 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         coordinator: OmadaIPGroupsCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator.temporales.async_unload()
         await coordinator.client.async_close()
 
     if not hass.data.get(DOMAIN):
-        for service in (
-            SERVICE_CREATE_GROUP,
-            SERVICE_UPDATE_GROUP,
-            SERVICE_DELETE_GROUP,
-            SERVICE_ADD_IP,
-            SERVICE_REMOVE_IP,
-        ):
+        for service in SERVICES:
             hass.services.async_remove(DOMAIN, service)
 
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Al borrar la integración, avisa de las IPs que se quedan fuera de su grupo.
+
+    Ya no habrá quien las devuelva (una entrada nueva no hereda el registro),
+    así que hay que volver a añadirlas a mano.
+    """
+    store: Store[dict] = Store(hass, STORAGE_VERSION, storage_key(entry.entry_id))
+    stored = await store.async_load() or {}
+    pending = [
+        f"- {record['ip']}" + (f" ({record['description']})" if record.get("description") else "")
+        for records in stored.get("groups", {}).values()
+        for record in records.values()
+    ]
+    if pending:
+        persistent_notification.async_create(
+            hass,
+            "Se ha borrado la integración con estas IPs quitadas temporalmente de "
+            "su grupo, y ya no volverán solas. Añádelas a mano si hace falta:\n"
+            + "\n".join(pending),
+            title="Omada IP Groups: IPs fuera de su grupo",
+            notification_id=f"{DOMAIN}_{entry.entry_id}_temporales",
+        )
+    await store.async_remove()
 
 
 async def async_remove_config_entry_device(
@@ -259,6 +319,28 @@ def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_ADD_IP, handle_add_ip, schema=SERVICE_ADD_IP_SCHEMA
     )
+    async def handle_remove_ip_temporarily(call: ServiceCall) -> None:
+        coordinator = _get_first_coordinator(hass)
+        await coordinator.temporales.async_remove(
+            call.data[ATTR_GROUP_ID], call.data[ATTR_IP], call.data[ATTR_MINUTES] or None
+        )
+        await coordinator.async_request_refresh()
+
+    async def handle_restore_ips(call: ServiceCall) -> None:
+        coordinator = _get_first_coordinator(hass)
+        await coordinator.temporales.async_restore(
+            call.data[ATTR_GROUP_ID], call.data.get(ATTR_IP)
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_REMOVE_IP, handle_remove_ip, schema=SERVICE_REMOVE_IP_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REMOVE_IP_TEMPORARILY,
+        handle_remove_ip_temporarily,
+        schema=SERVICE_REMOVE_IP_TEMPORARILY_SCHEMA,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_RESTORE_IPS, handle_restore_ips, schema=SERVICE_RESTORE_IPS_SCHEMA
     )

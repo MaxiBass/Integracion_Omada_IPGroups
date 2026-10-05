@@ -111,3 +111,53 @@ remove_ip:
       required: true
       selector:
         text:
+
+remove_ip_temporarily:
+  name: Quitar IP temporalmente
+  description: >-
+    Quita una IP de un grupo y la guarda (con su máscara y descripción) para
+    volver a añadirla después, p. ej. para dar Internet un rato a un
+    dispositivo del grupo que lo bloquea. Sobrevive a reinicios de HA.
+  fields:
+    group_id:
+      name: ID del grupo
+      description: Identificador del grupo (atributo group_id del sensor).
+      required: true
+      selector:
+        text:
+    ip:
+      name: IP
+      description: Dirección IP a quitar temporalmente.
+      required: true
+      example: "192.168.1.50"
+      selector:
+        text:
+    minutes:
+      name: Minutos
+      description: >-
+        Pasado este tiempo, la IP vuelve sola al grupo. Sin indicar (o 0), no
+        vuelve hasta llamar a «Volver a añadir IPs».
+      required: false
+      example: 30
+      selector:
+        number:
+          min: 0
+          max: 1440
+          unit_of_measurement: min
+
+restore_ips:
+  name: Volver a añadir IPs
+  description: Devuelve a su grupo las IPs quitadas temporalmente.
+  fields:
+    group_id:
+      name: ID del grupo
+      description: Identificador del grupo.
+      required: true
+      selector:
+        text:
+    ip:
+      name: IP
+      description: Solo esta IP. Sin indicar, todas las quitadas temporalmente del grupo.
+      required: false
+      selector:
+        text:
