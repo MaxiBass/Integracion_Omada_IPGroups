@@ -315,6 +315,12 @@ async def _recorrido(directorio: Path) -> None:
         comprobar(hass.states.get(sensor.entity_id).state == "2", "el sensor se refresca")
 
         seleccion = _entidad(hass, "select", f"{entrada.entry_id}_g1_remove_ip_select")
+        quitar = _entidad(hass, "button", f"{entrada.entry_id}_g1_remove_ip_button")
+        comprobar(hass.states.get(seleccion).state == "unknown",
+                  f"«IP a quitar» empieza sin ninguna IP elegida ({hass.states.get(seleccion).state!r})")
+        comprobar(await _falla(hass.services.async_call("button", "press", {"entity_id": quitar}, blocking=True))
+                  and len(g1["ipList"]) == 2,
+                  "sin elegir una, «Quitar IP seleccionada» da error y no quita nada")
         await hass.services.async_call(
             "select", "select_option", {"entity_id": seleccion, "option": "10.0.0.20 (Tablet)"}, blocking=True
         )
@@ -325,6 +331,9 @@ async def _recorrido(directorio: Path) -> None:
         )
         await hass.async_block_till_done()
         comprobar([e["ip"] for e in g1["ipList"]] == ["10.0.0.21"], "quita la IP seleccionada, no otra")
+        comprobar(hass.states.get(seleccion).state == "unknown",
+                  f"después, «IP a quitar» se queda vacía en vez de saltar a otra IP "
+                  f"({hass.states.get(seleccion).state!r})")
         comprobar(g1["description"] == "Red de invitados", "quitar una IP tampoco borra la descripción")
 
         # ── Servicios ──
@@ -334,12 +343,6 @@ async def _recorrido(directorio: Path) -> None:
             {"name": "Nuevo", "ips": [{"ip": "10.0.0.30"}, {"ip": "10.0.0.31"}, {"ip": "10.0.0.32"}]},
             blocking=True,
         )
-        await hass.async_block_till_done()
-        # async_request_refresh agrupa las peticiones que llegan en menos de
-        # 10 s (el Debouncer del coordinator): tras los dos botones de arriba,
-        # esta queda en espera. En casa el grupo aparece a los pocos segundos;
-        # aquí se fuerza el sondeo para no esperar.
-        await hass.data[DOMINIO][entrada.entry_id].async_refresh()
         await hass.async_block_till_done()
         nuevo = next(g for g in controlador.grupos.values() if g["name"] == "Nuevo")
         claves = [e["key"] for e in nuevo["ipList"]]
@@ -386,6 +389,14 @@ async def _recorrido(directorio: Path) -> None:
         await _pulsar(hass, f"{eid}_g1_temp_remove_button")
         comprobar("10.0.0.40" not in en_g1() and "10.0.0.22" in en_g1(),
                   f"«Quitar temporalmente» saca solo la IP seleccionada ({en_g1()})")
+        # Lo que pasó en casa el 05/10: tras quitar la elegida, el desplegable
+        # saltaba a la primera del grupo y parecía que la quitada era esa.
+        comprobar(hass.states.get(seleccion).state == "unknown",
+                  f"el desplegable no salta a la primera IP del grupo ({hass.states.get(seleccion).state!r})")
+        comprobar(await _falla(hass.services.async_call(
+            "button", "press", {"entity_id": _entidad(hass, "button", f"{eid}_g1_temp_remove_button")}, blocking=True
+        )) and "10.0.0.22" in en_g1(),
+                  "pulsar otra vez sin elegir da error y no toca la primera IP")
         estado = fuera()
         apunte = (estado.attributes.get("ips") or [{}])[0]
         vuelve = dt_util.parse_datetime(apunte.get("restore_at") or "2000-01-01T00:00:00+00:00")
@@ -402,6 +413,8 @@ async def _recorrido(directorio: Path) -> None:
                   f"«Volver a añadir» la devuelve tal como estaba ({devuelta})")
         comprobar(fuera().state == "0" and "10.0.0.40" not in fichero.read_text("utf-8"),
                   "y se borra el apunte")
+        comprobar(hass.states.get(seleccion).state == "unknown",
+                  "al volver, no queda elegida otra vez (habría que elegirla a propósito)")
         comprobar(await _falla(hass.services.async_call(
             "button", "press", {"entity_id": _entidad(hass, "button", f"{eid}_g1_restore_button")}, blocking=True
         )), "«Volver a añadir» sin nada quitado da un error claro")

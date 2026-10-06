@@ -54,6 +54,14 @@ def _read_state(hass: HomeAssistant, domain: str, unique_id: str) -> str | None:
     return state.state if state else None
 
 
+def _selected_ip(hass: HomeAssistant, entry: ConfigEntry, group_id: str) -> str:
+    """IP elegida en el desplegable «IP a quitar» del grupo; error si no hay."""
+    option = _read_state(hass, "select", f"{entry.entry_id}_{group_id}_remove_ip_select")
+    if not option or option in ("unknown", "unavailable"):
+        raise HomeAssistantError("Elige primero una IP en «IP a quitar»")
+    return parse_ip_from_option(option)
+
+
 async def _clear_text(hass: HomeAssistant, unique_id: str) -> None:
     entity_id = er.async_get(hass).async_get_entity_id("text", DOMAIN, unique_id)
     if entity_id:
@@ -101,7 +109,7 @@ class OmadaAddIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity
 
         await _clear_text(self.hass, ip_unique)
         await _clear_text(self.hass, desc_unique)
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
 
 class OmadaRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity):
@@ -124,17 +132,12 @@ class OmadaRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEnt
         return group_device_info(self.hass, self._entry, self._group_id, name)
 
     async def async_press(self) -> None:
-        select_unique = f"{self._entry.entry_id}_{self._group_id}_remove_ip_select"
-        option = _read_state(self.hass, "select", select_unique)
-        if not option:
-            raise HomeAssistantError("No hay ninguna IP seleccionada para quitar en este grupo")
-
-        ip = parse_ip_from_option(option)
+        ip = _selected_ip(self.hass, self._entry, self._group_id)
         try:
             await self.coordinator.client.async_remove_ip(self._group_id, ip)
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error quitando la IP: {err}") from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
 
 class OmadaTempRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity):
@@ -159,21 +162,15 @@ class OmadaTempRemoveIpButton(CoordinatorEntity[OmadaIPGroupsCoordinator], Butto
         return group_device_info(self.hass, self._entry, self._group_id, name)
 
     async def async_press(self) -> None:
-        select_unique = f"{self._entry.entry_id}_{self._group_id}_remove_ip_select"
-        option = _read_state(self.hass, "select", select_unique)
-        if not option or option in ("unknown", "unavailable"):
-            raise HomeAssistantError("No hay ninguna IP seleccionada en este grupo")
-
+        ip = _selected_ip(self.hass, self._entry, self._group_id)
         minutes_unique = f"{self._entry.entry_id}_{self._group_id}_temp_minutes"
         try:
             minutes = int(float(_read_state(self.hass, "number", minutes_unique)))
         except (TypeError, ValueError):
             minutes = DEFAULT_TEMP_MINUTES
 
-        await self.coordinator.temporales.async_remove(
-            self._group_id, parse_ip_from_option(option), minutes or None
-        )
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.temporales.async_remove(self._group_id, ip, minutes or None)
+        await self.coordinator.async_refresh()
 
 
 class OmadaRestoreIpsButton(CoordinatorEntity[OmadaIPGroupsCoordinator], ButtonEntity):
@@ -225,7 +222,7 @@ class OmadaDeleteGroupButton(CoordinatorEntity[OmadaIPGroupsCoordinator], Button
             await self.coordinator.client.async_delete_ip_group(self._group_id)
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error borrando el grupo: {err}") from err
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_refresh()
 
 
 class OmadaCreateGroupButton(ButtonEntity):
@@ -254,4 +251,4 @@ class OmadaCreateGroupButton(ButtonEntity):
             raise HomeAssistantError(f"Error creando el grupo: {err}") from err
 
         await _clear_text(self.hass, name_unique)
-        await self._coordinator.async_request_refresh()
+        await self._coordinator.async_refresh()

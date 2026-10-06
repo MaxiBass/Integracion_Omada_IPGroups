@@ -40,8 +40,10 @@ Para poder añadir y quitar IPs desde un panel sin depender de ayudantes
 (`input_text`, scripts) creados a mano: cada grupo trae sus propios campos
 y botones. Los campos de texto viven en memoria (se vacían al reiniciar).
 
-El desplegable «IP a quitar» muestra por defecto la primera IP del grupo, y
-el botón quita la que esté mostrada.
+El desplegable «IP a quitar» empieza sin ninguna IP elegida, y los botones
+«Quitar IP seleccionada» y «Quitar temporalmente» no hacen nada (dan error)
+hasta que se elige una. Hasta la v0.3.1 mostraba la primera IP del grupo por
+defecto; ver §9.
 
 ## 3. Identificadores que no se deben cambiar
 
@@ -191,9 +193,6 @@ existentes se mantienen.
 - `remove_ip` quita todas las entradas con esa IP, sea cual sea la máscara.
 - Los servicios actúan siempre sobre la primera entrada configurada; con un
   solo controlador no importa.
-- Tras pulsar un botón, el refresco se agrupa con los de los 10 s siguientes
-  (el `Debouncer` del coordinator). Si se pulsan dos botones seguidos, el
-  segundo cambio tarda hasta 10 s en verse.
 
 ## 7. Quitar una IP temporalmente (v0.3.0, octubre de 2026)
 
@@ -286,7 +285,34 @@ Lo que se descartó de aquella integración:
   solo de Internet. Para dispositivos que deben seguir en la red local, lo
   correcto es grupo IP + regla ACL.
 
-## 9. Nota sobre las pruebas
+## 9. El desplegable saltaba a la primera IP (v0.3.2, octubre de 2026)
+
+El 05/10, al probar «Quitar temporalmente» en el grupo «Sin Internet», Maxi
+vio que «siempre deshabilita la primera de la lista». El historial de HA
+mostró otra cosa: la IP que salió del grupo fue la elegida, y la primera de
+la lista no se movió. Lo que fallaba era lo que se veía y lo que podía pasar
+después:
+
+- **El desplegable saltaba a la primera IP.** Al quitar la elegida, ya no
+  estaba entre las opciones y `current_option` devolvía la primera del
+  grupo. Parecía que la afectada era esa.
+- **Y era peligroso.** Con la primera IP «elegida» sin que nadie la eligiera,
+  pulsar otra vez «Quitar temporalmente» o «Quitar IP seleccionada» la
+  quitaba de verdad. Lo mismo nada más arrancar HA: el desplegable salía con
+  la primera IP puesta.
+- **Si la IP volvía**, quedaba elegida otra vez sola.
+
+Arreglo: el desplegable no tiene opción mientras no se elija una; si la
+elegida desaparece del grupo, se olvida; y los dos botones dan «Elige primero
+una IP en «IP a quitar»» si no hay ninguna. Las 7 comprobaciones nuevas
+fallaban con la v0.3.1 (una de ellas quitaba la primera IP) y pasan ahora.
+
+De paso, tras cada botón o servicio se refresca al momento
+(`async_refresh`) en vez de con `async_request_refresh`, que agrupa los
+refrescos de 10 s en 10 s: con dos acciones seguidas, la segunda tardaba en
+verse y el desplegable podía seguir mostrando una IP ya quitada.
+
+## 10. Nota sobre las pruebas
 
 Con HA 2026.9 y el Python 3.14.7 del venv, el intérprete da un segfault
 al cerrarse si hay una entrada de configuración cargada (pasa igual en

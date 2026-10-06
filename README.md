@@ -20,7 +20,8 @@ Historial de decisiones y de la revisión: [`docs/DECISIONES.md`](docs/DECISIONE
   - un sensor con el número de IPs y la lista como atributo (`ips`, `group_id`),
   - campos de texto «IP a añadir» y «Descripción de la IP a añadir», y el
     botón «Añadir IP»,
-  - un desplegable «IP a quitar» y el botón «Quitar IP seleccionada»,
+  - un desplegable «IP a quitar» (empieza vacío: hay que elegir la IP) y el
+    botón «Quitar IP seleccionada»,
   - para quitarla solo un rato: el botón «Quitar temporalmente», el campo
     «Minutos fuera del grupo» (60 por defecto; 0 = no vuelve sola), el botón
     «Volver a añadir» y el sensor «Quitadas temporalmente», con cuándo

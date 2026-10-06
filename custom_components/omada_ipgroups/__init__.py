@@ -262,7 +262,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             )
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error creando grupo IP: {err}") from err
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def handle_update_group(call: ServiceCall) -> None:
         coordinator = _get_first_coordinator(hass)
@@ -275,7 +275,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             )
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error actualizando grupo IP: {err}") from err
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def handle_delete_group(call: ServiceCall) -> None:
         coordinator = _get_first_coordinator(hass)
@@ -283,7 +283,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             await coordinator.client.async_delete_ip_group(call.data[ATTR_GROUP_ID])
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error borrando grupo IP: {err}") from err
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def handle_add_ip(call: ServiceCall) -> None:
         coordinator = _get_first_coordinator(hass)
@@ -296,7 +296,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             )
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error añadiendo IP al grupo: {err}") from err
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def handle_remove_ip(call: ServiceCall) -> None:
         coordinator = _get_first_coordinator(hass)
@@ -307,7 +307,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
             )
         except OmadaApiError as err:
             raise HomeAssistantError(f"Error quitando IP del grupo: {err}") from err
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     hass.services.async_register(
         DOMAIN, SERVICE_CREATE_GROUP, handle_create_group, schema=SERVICE_CREATE_GROUP_SCHEMA
@@ -326,7 +326,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         await coordinator.temporales.async_remove(
             call.data[ATTR_GROUP_ID], call.data[ATTR_IP], call.data[ATTR_MINUTES] or None
         )
-        await coordinator.async_request_refresh()
+        await coordinator.async_refresh()
 
     async def handle_restore_ips(call: ServiceCall) -> None:
         coordinator = _get_first_coordinator(hass)

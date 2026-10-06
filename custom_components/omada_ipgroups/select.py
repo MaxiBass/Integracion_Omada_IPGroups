@@ -83,10 +83,17 @@ class OmadaGroupRemoveIpSelect(CoordinatorEntity[OmadaIPGroupsCoordinator], Sele
 
     @property
     def current_option(self) -> str | None:
-        opts = self.options
-        if self._selected in opts:
-            return self._selected
-        return opts[0] if opts else None
+        # Sin elegir, no hay opción (antes salía la primera IP del grupo, y los
+        # botones la quitaban sin que nadie la hubiera elegido).
+        return self._selected if self._selected in self.options else None
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        # Si la IP elegida ya no está en el grupo (se acaba de quitar), se
+        # olvida: no se salta a otra, ni vuelve a quedar elegida si regresa.
+        if self._selected not in self.options:
+            self._selected = None
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         self._selected = option

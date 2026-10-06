@@ -140,7 +140,7 @@ class TemporaryRemovals:
             )
         await self._async_forget(group_id, ip)
         self._coordinator.async_update_listeners()
-        await self._coordinator.async_request_refresh()
+        await self._coordinator.async_refresh()
 
     @callback
     def _schedule(self, group_id: str, ip: str) -> None:
